@@ -47,7 +47,7 @@ type MemoryStore struct {
 }
 
 // cria uma nova instância do armazenamento em memória
-func NewMemoryStore() *MemoryStore {
+func newMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		tasks: make(map[string]*Task),
 	}
@@ -60,7 +60,7 @@ func (s *MemoryStore) nextIDString() string {
 }
 
 // lista todas as tarefas
-func (s *MemoryStore) List() []*Task {
+func (s *MemoryStore) list() []*Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -73,7 +73,7 @@ func (s *MemoryStore) List() []*Task {
 }
 
 // obtém uma tarefa pelo ID
-func (s *MemoryStore) Get(id string) (*Task, bool) {
+func (s *MemoryStore) get(id string) (*Task, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, ok := s.tasks[id]
@@ -88,9 +88,8 @@ func validateStatus(status string) error {
 	return nil
 }
 
-
 // cria uma nova tarefa
-func (s *MemoryStore) Create(in TaskInput) (*Task, error) {
+func (s *MemoryStore) create(in TaskInput) (*Task, error) {
 	if in.Title == nil || *in.Title == "" {
 		return nil, errors.New("titulo obrigatorio")
 	}
@@ -125,7 +124,7 @@ func (s *MemoryStore) Create(in TaskInput) (*Task, error) {
 }
 
 // atualiza uma tarefa existente
-func (s *MemoryStore) Update(id string, in TaskInput) (*Task, error) {
+func (s *MemoryStore) update(id string, in TaskInput) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -152,11 +151,10 @@ func (s *MemoryStore) Update(id string, in TaskInput) (*Task, error) {
 
 	existing.UpdatedAt = time.Now().UTC()
 	return existing, nil
-
 }
 
 // deleta uma tarefa pelo ID
-func (s *MemoryStore) Delete(id string) bool {
+func (s *MemoryStore) delete(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
