@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { DragDropContext } from '@hello-pangea/dnd';
 import Column from './Column.jsx';
+import TaskModal from './taskModal.jsx';
+import Logo from '../assets/logo.svg';
 
 const statusByCol = {
   todo: 'A Fazer',
@@ -14,12 +16,16 @@ const colByStatus = {
   'Concluída': 'done',
 };
 
-const API_URL = 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 export default function KanbanBoard() {
+  // estado principal
   const [columns, setColumns] = useState({ todo: [], doing: [], done: [] });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  // modal
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [showModal, setShowModal] = useState(false);
 
   const flatTasks = useMemo(
     () => [...columns.todo, ...columns.doing, ...columns.done],
@@ -27,7 +33,6 @@ export default function KanbanBoard() {
   );
 
   useEffect(() => {
-    // carrega tasks do backend
     async function fetchTasks() {
       setLoading(true);
       setErr('');
@@ -37,7 +42,8 @@ export default function KanbanBoard() {
         const list = Array.isArray(json?.data) ? json.data : [];
         const grouped = { todo: [], doing: [], done: [] };
         for (const t of list) {
-          const col = colByStatus[t.status] || 'todo';
+          if (!t || t.id == null) continue;
+            const col = colByStatus[t.status] || 'todo';
           grouped[col].push(t);
         }
         setColumns(grouped);
@@ -51,7 +57,6 @@ export default function KanbanBoard() {
   }, []);
 
   function reorder(list, start, end) {
-    // reordena lista dentro da mesma coluna
     const arr = Array.from(list);
     const [removed] = arr.splice(start, 1);
     arr.splice(end, 0, removed);
@@ -59,7 +64,6 @@ export default function KanbanBoard() {
   }
 
   async function persistStatus(id, newStatus) {
-    // salva status no backend
     try {
       const res = await fetch(`${API_URL}/tasks/${id}`, {
         method: 'PUT',
@@ -75,7 +79,6 @@ export default function KanbanBoard() {
     }
   }
 
-  // drag and drop
   function handleDragEnd(result) {
     const { destination, source, draggableId } = result;
     if (!destination) return;
@@ -85,17 +88,18 @@ export default function KanbanBoard() {
     const toCol = destination.droppableId;
 
     if (fromCol === toCol) {
-      setColumns((prev) => ({
+      setColumns(prev => ({
         ...prev,
         [fromCol]: reorder(prev[fromCol], source.index, destination.index),
       }));
       return;
     }
 
-    setColumns((prev) => {
+    setColumns(prev => {
       const start = Array.from(prev[fromCol]);
       const finish = Array.from(prev[toCol]);
       const [moved] = start.splice(source.index, 1);
+      if (!moved) return prev;
       const updated = { ...moved, status: statusByCol[toCol] || moved.status };
       finish.splice(destination.index, 0, updated);
       return { ...prev, [fromCol]: start, [toCol]: finish };
@@ -105,99 +109,153 @@ export default function KanbanBoard() {
     if (newStatus) persistStatus(draggableId, newStatus);
   }
 
-  // deletar tarefa
-  function handleDeleteTask(task) {
-    try {
-      setColumns((prev) => {
-        const col = colByStatus[task.status] || 'todo';
-        const arr = Array.from(prev[col]);
-        const idx = arr.findIndex((t) => String(t.id) === String(task.id));
-        if (idx >= 0) arr.splice(idx, 1);
-        return { ...prev, [col]: arr };
+  async function handleAddTask(colId, title) {
+    const status = statusByCol[colId] || 'A Fazer';
+    const res = await fetch(`${API_URL}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, status }),
+    });
+    const json = await res.json();
+    if (json?.success && json?.data) {
+      setColumns(prev => {
+        const arr = Array.from(prev[colId] || []);
+        arr.push(json.data);
+        return { ...prev, [colId]: arr };
       });
-      fetch(`${API_URL}/tasks/${task.id}`, { method: 'DELETE' }).catch(() => {});
+    } else {
+      throw new Error('falha ao criar');
+    }
+  }
+
+  function openTask(task) {
+    if (!task) return;
+    setSelectedTask(task);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    setSelectedTask(null);
+  }
+
+  async function saveTaskFromModal(fields) {
+    if (!selectedTask) return;
+
+    // faz request primeiro para ter dados atualizados (ex updated_at)
+    let updatedData = {
+      title: fields.title,
+      description: fields.description,
+      status: fields.status
+    };
+
+    try {
+      const res = await fetch(`${API_URL}/tasks/${selectedTask.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedData),
+      });
+      const json = await res.json();
+      if (json?.success && json.data) {
+        updatedData = json.data; // usa dado oficial do backend
+      }
+    } catch (e) {
+      console.warn('erro ao salvar');
+      return;
+    }
+
+    setColumns(prev => {
+      const oldStatus = selectedTask.status;
+      const newStatus = updatedData.status || oldStatus;
+      const oldCol = colByStatus[oldStatus] || 'todo';
+      const newCol = colByStatus[newStatus] || oldCol;
+
+      const next = { ...prev };
+
+      if (oldCol === newCol) {
+        // atualiza em place
+        next[oldCol] = next[oldCol].map(t =>
+          String(t.id) === String(selectedTask.id)
+            ? { ...t, ...updatedData }
+            : t
+        );
+      } else {
+        // move entre colunas
+        const fromArr = Array.from(next[oldCol]);
+        const idx = fromArr.findIndex(t => String(t.id) === String(selectedTask.id));
+        if (idx >= 0) fromArr.splice(idx, 1);
+        next[oldCol] = fromArr;
+        const toArr = Array.from(next[newCol]);
+        toArr.push({ ...selectedTask, ...updatedData });
+        next[newCol] = toArr;
+      }
+
+      return next;
+    });
+
+    closeModal();
+  }
+
+  async function deleteTaskFromModal() {
+    if (!selectedTask) return;
+    setColumns(prev => {
+      const col = colByStatus[selectedTask.status] || 'todo';
+      const arr = Array.from(prev[col]);
+      const idx = arr.findIndex(t => t && String(t.id) === String(selectedTask.id));
+      if (idx >= 0) arr.splice(idx, 1);
+      return { ...prev, [col]: arr };
+    });
+    try {
+      await fetch(`${API_URL}/tasks/${selectedTask.id}`, { method: 'DELETE' });
     } catch (e) {
       console.warn('erro ao excluir');
     }
-  }
-
-  // editar tarefa
-  function handleEditTask(task) {
-    const novoTitulo = window.prompt('novo titulo:', task.title || '');
-    if (!novoTitulo) return;
-    setColumns((prev) => {
-      const col = colByStatus[task.status] || 'todo';
-      const arr = Array.from(prev[col]);
-      const idx = arr.findIndex((t) => String(t.id) === String(task.id));
-      if (idx >= 0) arr[idx] = { ...arr[idx], title: novoTitulo };
-      return { ...prev, [col]: arr };
-    });
-    fetch(`${API_URL}/tasks/${task.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: novoTitulo }),
-    }).catch(() => {});
-  }
-
-  async function handleAddTask(colId, title) {
-    // cria task no backend com status da coluna
-    const status = statusByCol[colId] || 'A Fazer';
-    try {
-      const res = await fetch(`${API_URL}/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, status }),
-      });
-      const json = await res.json();
-      if (json?.success && json?.data) {
-        setColumns((prev) => {
-          const arr = Array.from(prev[colId] || []);
-          arr.push(json.data);
-          return { ...prev, [colId]: arr };
-        });
-      } else {
-        console.warn('falha ao criar tarefa');
-      }
-    } catch (e) {
-      console.warn('erro de rede ao criar tarefa');
-    }
+    closeModal();
   }
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold mb-3">kanban</h2>
+    <div className="w-full">
+      <div className="mb-6 flex items-center justify-center gap-3">
+        <img src={Logo} alt="kanban logo" className="h-7 w-7" />
+        <h2 className="text-2xl font-bold tracking-tight text-neutral-100">Tarea</h2>
+      </div>
 
-      {loading && <div className="text-sm text-gray-600 mb-2">carregando...</div>}
-      {err && <div className="text-sm text-red-600 mb-2">{err}</div>}
+      {loading && <div className="text-sm text-neutral-300 mb-2 text-center">carregando...</div>}
+      {err && <div className="text-sm text-rose-400 mb-2 text-center">{err}</div>}
 
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-center gap-5">
           <Column
-            title="A Fazer"
+            title="A fazer"
             tasks={columns.todo}
             id="todo"
-            onEditTask={handleEditTask}
-            onDeleteTask={handleDeleteTask}
             onAddTask={handleAddTask}
+            onOpenTask={openTask}
           />
           <Column
-            title="Em Progresso"
+            title="Em progresso"
             tasks={columns.doing}
             id="doing"
-            onEditTask={handleEditTask}
-            onDeleteTask={handleDeleteTask}
             onAddTask={handleAddTask}
+            onOpenTask={openTask}
           />
           <Column
             title="Concluídas"
             tasks={columns.done}
             id="done"
-            onEditTask={handleEditTask}
-            onDeleteTask={handleDeleteTask}
             onAddTask={handleAddTask}
+            onOpenTask={openTask}
           />
         </div>
       </DragDropContext>
+
+      <TaskModal
+        open={showModal}
+        task={selectedTask}
+        onClose={closeModal}
+        onSave={saveTaskFromModal}
+        onDelete={deleteTaskFromModal}
+      />
     </div>
   );
 }

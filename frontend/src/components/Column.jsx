@@ -2,19 +2,26 @@ import React, { useState } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
 import Task from './Task.jsx';
 
-export default function Column({ title, tasks, id, onEditTask, onDeleteTask, onAddTask }) {
+export default function Column({ title, tasks, id, onAddTask, onOpenTask }) {
   const [showForm, setShowForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
 
+  // define cor do titulo conforme a coluna
+  const headerColor = {
+    todo: 'bg-blue-500',
+    doing: 'bg-rose-600',
+    done: 'bg-emerald-600',
+  }[id] || 'bg-neutral-800';
+
   function handleOpenForm() {
-    // abre o form
+    // abre form pequeno
     setShowForm(true);
   }
 
   function handleCancel() {
-    // cancela e limpa
+    // fecha e limpa
     setShowForm(false);
     setNewTitle('');
     setErr('');
@@ -30,9 +37,7 @@ export default function Column({ title, tasks, id, onEditTask, onDeleteTask, onA
     setErr('');
     setSending(true);
     try {
-      // chama callback para criar tarefa na coluna
       await onAddTask?.(id, t);
-      // limpa e fecha
       setNewTitle('');
       setShowForm(false);
     } catch (e) {
@@ -42,42 +47,53 @@ export default function Column({ title, tasks, id, onEditTask, onDeleteTask, onA
     }
   }
 
+  // evita valores indefinidos
+  const safeTasks = Array.isArray(tasks) ? tasks.filter(t => t && t.id != null) : [];
+
   return (
-    <div className="bg-gray-100 border border-gray-400 rounded-sm w-[300px] h-[475px] flex flex-col">
-      <h3 className="bg-pink-300 text-center p-2 mb-2 font-semibold">{title}</h3>
+    <div className="w-[320px] h-[500px] flex flex-col rounded-md border bg-neutral-950 border-neutral-800 shadow">
+      <h3 className={`text-center px-3 py-2 mb-2 text-sm font-semibold text-white rounded-t-md ${headerColor}`}>
+        {title}
+      </h3>
 
       <Droppable droppableId={id}>
         {(provided, snapshot) => (
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className={`p-2 transition-colors duration-200 flex-1 overflow-y-auto min-h-[100px] ${
-              snapshot.isDraggingOver ? 'bg-pink-100' : 'bg-white'
-            }`}
+            className={[
+              'flex-1 p-3 overflow-y-auto transition-colors min-h-[120px]',
+              snapshot.isDraggingOver ? 'bg-neutral-900/50' : 'bg-transparent'
+            ].join(' ')}
           >
-            {tasks?.map((task, index) => (
+            {safeTasks.map((task, index) => (
               <Task
                 key={task.id}
                 task={task}
                 index={index}
-                onEdit={onEditTask}
-                onDelete={onDeleteTask}
+                onOpen={onOpenTask}
               />
             ))}
+
             {provided.placeholder}
+
+            {safeTasks.length === 0 && (
+              <div className="text-[11px] text-neutral-500 px-1 text-center">Sem tarefas</div>
+            )}
           </div>
         )}
       </Droppable>
 
-      <div className="border-t border-gray-300 p-2 bg-gray-50">
+      <div className="border-t border-neutral-800 p-2 bg-neutral-950 rounded-b-md">
         {!showForm && (
-            <button
-              type="button"
-              onClick={handleOpenForm}
-              className="w-full text-xs px-3 py-2 rounded bg-pink-400 hover:bg-pink-500 text-white"
-            >
-              add
-            </button>
+          <button
+            type="button"
+            onClick={handleOpenForm}
+            className="cursor-pointer w-full text-xs px-3 py-2 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-100 transition-all duration-200 hover:scale-[1.02] hover:shadow-md"
+
+          >
+            + Adicionar tarefa
+          </button>
         )}
 
         {showForm && (
@@ -86,27 +102,27 @@ export default function Column({ title, tasks, id, onEditTask, onDeleteTask, onA
               type="text"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="titulo da tarefa"
-              className="border border-gray-300 rounded px-2 py-1 text-xs"
+              placeholder="Título da tarefa"
+              className="border rounded-md px-2 py-1 text-xs bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-600"
               disabled={sending}
               autoFocus
             />
-            {err && <div className="text-[10px] text-red-600">{err}</div>}
+            {err && <div className="text-[10px] text-rose-400">{err}</div>}
             <div className="flex gap-2">
               <button
                 type="submit"
                 disabled={sending}
-                className="flex-1 text-xs px-3 py-1 rounded bg-pink-500 hover:bg-pink-600 text-white disabled:opacity-60"
+                className="flex-1 text-xs px-3 py-1 rounded-md bg-neutral-200 hover:bg-neutral-300 text-neutral-900 disabled:opacity-60 transition"
               >
-                {sending ? 'salvando...' : 'salvar'}
+                {sending ? 'Salvando...' : 'Salvar'}
               </button>
               <button
                 type="button"
                 onClick={handleCancel}
                 disabled={sending}
-                className="text-xs px-3 py-1 rounded bg-gray-300 hover:bg-gray-400 text-gray-800"
+                className="text-xs px-3 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-100 border border-neutral-700 transition"
               >
-                cancelar
+                Cancelar
               </button>
             </div>
           </form>

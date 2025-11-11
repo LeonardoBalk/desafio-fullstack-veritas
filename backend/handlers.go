@@ -17,7 +17,10 @@ func writeJson(w http.ResponseWriter, status int, payload any) {
 
 // função para escrever uma mensagem de erro em formato JSON
 func writeError(w http.ResponseWriter, status int, message string) {
-	writeJson(w, status, map[string]string{"error": message})
+	writeJson(w, status, map[string]any{
+		"success": false,
+		"error":   message,
+	})
 }
 
 // função para analisar o corpo JSON de uma requisição HTTP
@@ -30,6 +33,7 @@ func parseJsonBody(r *http.Request, dst any) error {
 	return decoder.Decode(dst)
 }
 
+// cors simples para liberar acesso do frontend
 func cors (next http.Handler) http.Handler {
 	return http.HandlerFunc(func (w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -55,14 +59,14 @@ func makeHandler (store *MemoryStore) http.Handler {
 		case http.MethodGet: // se for GET, lista todas as tarefas
 			tasks := store.list()
 			writeJson(w, http.StatusOK, map[string]any{
-				"sucess": true,
+				"success": true,
 				"data": tasks,
 			})
 			return 
 		case http.MethodPost: // se for POST, cria uma nova tarefa
 			var in TaskInput
 			if err := parseJsonBody(r, &in); err != nil {
-				writeError(w, http.StatusBadRequest, "json inválido") // retorna erro se o JSON for inválido
+				writeError(w, http.StatusBadRequest, "json invalido") // retorna erro se o JSON for inválido
 				return
 			}
 			created, err := store.create(in)
@@ -76,22 +80,23 @@ func makeHandler (store *MemoryStore) http.Handler {
 			})
 			return
 		default:
-			writeError(w, http.StatusMethodNotAllowed, "método não permitido") // retorna erro se o método não for permitido
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido") // retorna erro se o método não for permitido
 			return
 		}
 	})
 
+	// manipulador para rotas com id /tasks/{id}
 	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimPrefix(r.URL.Path, "/tasks/") // extrai o ID da tarefa da URL
 		if id == "" {
-			writeError(w, http.StatusBadRequest, "rota não encontrada") // retorna erro se o ID estiver ausente
+			writeError(w, http.StatusBadRequest, "rota nao encontrada") // retorna erro se o ID estiver ausente
 			return
 		}
 		switch r.Method {
 		case http.MethodGet: // se for GET, pega a tarefa pelo ID
 			t, ok := store.get(id)
 			if !ok {
-				writeError(w, http.StatusNotFound, "tarefa não encontrada") // retorna erro se a tarefa não for encontrada
+				writeError(w, http.StatusNotFound, "task nao encontrada") // retorna erro se a tarefa não for encontrada
 				return
 			}
 			writeJson(w, http.StatusOK, map[string]any{ // retorna a tarefa encontrada
@@ -99,15 +104,15 @@ func makeHandler (store *MemoryStore) http.Handler {
 				"data": t,
 			})
 			return
-			case http.MethodPut: // se for PUT, atualiza a tarefa pelo ID
+		case http.MethodPut: // se for PUT, atualiza a tarefa pelo ID
 			var in TaskInput
 			if err := parseJsonBody(r, &in); err != nil {
-				writeError(w, http.StatusBadRequest, "json inválido") // retorna erro se o JSON for inválido
+				writeError(w, http.StatusBadRequest, "json invalido") // retorna erro se o JSON for inválido
 				return
 			}
 			updated, err := store.update(id, in)
 			if err != nil {
-				writeError(w, http.StatusNotFound, err.Error()) // retorna erro se a atualização falhar
+				writeError(w, http.StatusBadRequest, err.Error()) // retorna erro se a atualização falhar
 				return
 			}
 			writeJson(w, http.StatusOK, map[string]any{ // retorna a tarefa atualizada
@@ -115,10 +120,10 @@ func makeHandler (store *MemoryStore) http.Handler {
 				"data": updated,
 			})
 			return
-			case http.MethodDelete: // se for DELETE, deleta a tarefa pelo ID
+		case http.MethodDelete: // se for DELETE, deleta a tarefa pelo ID
 			ok := store.delete(id)
 			if !ok {
-				writeError(w, http.StatusNotFound, "tarefa não encontrada") // retorna erro se a tarefa não for encontrada
+				writeError(w, http.StatusNotFound, "task nao encontrada") // retorna erro se a tarefa não for encontrada
 				return
 			}
 			writeJson(w, http.StatusOK, map[string]any{ // retorna sucesso
@@ -126,11 +131,10 @@ func makeHandler (store *MemoryStore) http.Handler {
 			})
 			return
 		default:
-			writeError(w, http.StatusMethodNotAllowed, "método não permitido") // retorna erro se o método não for permitido
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido") // retorna erro se o método não for permitido
 			return
 		}
 	})
-
 
 	return cors(mux)
 }

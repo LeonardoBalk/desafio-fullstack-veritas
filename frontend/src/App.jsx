@@ -1,17 +1,17 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
-import KanbanBoard from './components/KanbanBoard.jsx'
+import React, { useEffect } from 'react';
+import KanbanBoard from './components/KanbanBoard.jsx';
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  // ativa dark mode por padrao
+  useEffect(() => {
+    document.documentElement.classList.add('dark');
+  }, []);
 
   return (
-    <div className='App'>
-     <KanbanBoard />
+    <div className="bg-neutral-850">
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        <KanbanBoard />
+      </div>
     </div>
-  )
+  );
 }
-
-export default App
